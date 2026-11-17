@@ -1,0 +1,63 @@
+name: Weekly Friday Release
+
+on:
+  schedule:
+    # Fridays at 03:30 UTC (09:00 AM IST)
+    - cron: '30 3 * * 5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish newest staged draft release (if any)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+
+          repo = os.environ["REPO"]
+          raw = subprocess.check_output(["gh", "api", f"repos/{repo}/releases?per_page=30"], text=True)
+          releases = json.loads(raw)
+          drafts = sorted(
+              [r for r in releases if r.get("draft")],
+              key=lambda r: r.get("created_at", ""),
+              reverse=True,
+          )
+          if not drafts:
+              print("No staged draft release found - nothing to publish this Friday.")
+              sys.exit(0)
+
+          target = drafts[0]
+          tag = target["tag_name"]
+          rid = target["id"]
+          payload = json.dumps({"draft": False, "make_latest": "true"})
+          subprocess.run(
+              ["gh", "api", "-X", "PATCH", f"repos/{repo}/releases/{rid}", "--input", "-"],
+              input=payload,
+              text=True,
+              check=True,
+          )
+          print(f"Published {tag} (release id {rid}) as Latest.")
+
+          raw2 = subprocess.check_output(["gh", "api", f"repos/{repo}/releases?per_page=30"], text=True)
+          published = sorted(
+              [r for r in json.loads(raw2) if not r.get("draft")],
+              key=lambda r: r.get("published_at") or r.get("created_at", ""),
+              reverse=True,
+          )
+          for old in published[2:]:
+              old_tag = old["tag_name"]
+              if old_tag == tag:
+                  continue
+              subprocess.run(
+                  ["gh", "release", "delete", old_tag, "--repo", repo, "--yes", "--cleanup-tag"],
+                  check=True,
+              )
+              print(f"Removed old release {old_tag}")
+          PY
