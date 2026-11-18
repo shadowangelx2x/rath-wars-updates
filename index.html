@@ -63,7 +63,7 @@ body { color: #e8d6a8; background-color: #0d0608; overflow: hidden; touch-action
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":39406000,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":39558996,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
@@ -96,15 +96,15 @@ const engine = new Engine(GODOT_CONFIG);
 		const ios = /iP(hone|od|ad)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 		const inApp = /Instagram|FBAN|FBAV|Line\/|Twitter|BytedanceWebview/i.test(ua);
 		if (inApp) {
-			fsTip.textContent = 'In-app browser blocks fullscreen — tap ··· → Open in Chrome / Safari, then rotate sideways.';
+			fsTip.textContent = 'In-app browser blocks fullscreen — tap ··· → Open in Safari / Chrome, then rotate sideways.   ✕';
 		} else if (ios) {
-			fsTip.textContent = 'iPhone browsers block fullscreen — rotate sideways (or tap aA / Share → Hide Toolbar).';
+			fsTip.textContent = 'Full screen: tap Share ↑ → Add to Home Screen (or aA → Hide Toolbar) for borderless play!   ✕';
 		} else {
-			fsTip.textContent = 'Fullscreen blocked by browser — tap ··· → Open in Chrome and rotate sideways.';
+			fsTip.textContent = 'Fullscreen blocked by browser — tap ··· → Open in Chrome and rotate sideways.   ✕';
 		}
 		fsTip.style.display = 'block';
 		clearTimeout(fsTipTimer);
-		fsTipTimer = setTimeout(() => { fsTip.style.display = 'none'; fsTipTimer = 0; }, 5500);
+		fsTipTimer = setTimeout(() => { fsTip.style.display = 'none'; fsTipTimer = 0; }, 6500);
 	}
 	fsTip.addEventListener('click', () => { fsTip.style.display = 'none'; fsTipTimer = 0; });
 
@@ -134,10 +134,7 @@ const engine = new Engine(GODOT_CONFIG);
 	};
 
 	window.rwCanFullscreen = function () {
-		const target = document.documentElement;
-		const hasApi = !!(target && (target.requestFullscreen || target.webkitRequestFullscreen));
-		const iphone = /iP(hone|od)/.test(navigator.userAgent || '');
-		return hasApi && !iphone;
+		return true;
 	};
 	window.rwIsFullscreen = function () {
 		return !!(document.fullscreenElement || document.webkitFullscreenElement);
@@ -155,6 +152,7 @@ const engine = new Engine(GODOT_CONFIG);
 		const req = target.requestFullscreen || target.webkitRequestFullscreen;
 		if (!req) {
 			showFsTip();
+			try { window.scrollTo(0, 1); } catch (_e) {}
 			return false;
 		}
 		try {
@@ -192,7 +190,7 @@ const engine = new Engine(GODOT_CONFIG);
 		const standalone = !!(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
 		if (touch && portrait) {
 			setBanner('↻ Rotate sideways for full-screen battle   ✕');
-		} else if (ios && !standalone && window.self === window.top) {
+		} else if (ios && !standalone) {
 			setBanner('iPhone full-screen: tap Share ↑ → Add to Home Screen   ✕');
 		} else {
 			setBanner('');
