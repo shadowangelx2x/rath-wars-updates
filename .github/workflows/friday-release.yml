@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Publish highest staged draft release (if any)
+        id: pub
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -55,6 +56,10 @@ jobs:
                   check=True,
               )
               print(f"Published {tag} as Latest.")
+              ver = tag.lstrip("v")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+                  out.write(f"published_tag={tag}\n")
+                  out.write(f"published_ver={ver}\n")
           else:
               print("No draft newer than the latest published release.")
 
@@ -80,3 +85,60 @@ jobs:
               )
               print(f"Removed old release {old_tag}")
           PY
+
+      - name: Deploy iOS / iPad Fullscreen PWA to GitHub Pages
+        if: steps.pub.outputs.published_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.pub.outputs.published_tag }}
+        run: |
+          mkdir -p /tmp/pwa_dl /tmp/gh_pages
+          if ! gh release download "$TAG" --repo "$REPO" -p "RathWars_PWA.zip" -D /tmp/pwa_dl; then
+            echo "No RathWars_PWA.zip asset attached to $TAG - skipping GitHub Pages update."
+            exit 0
+          fi
+          git clone --depth 1 --branch gh-pages "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" /tmp/gh_pages
+          cd /tmp/gh_pages
+          find . -maxdepth 1 ! -name '.git' ! -name '.' -exec rm -rf {} +
+          unzip -q /tmp/pwa_dl/RathWars_PWA.zip -d /tmp/gh_pages
+          touch /tmp/gh_pages/.nojekyll
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "PWA files unchanged."
+          else
+            git commit -m "Deploy Rath Wars PWA ${TAG}"
+            git push origin gh-pages
+            echo "Deployed Rath Wars PWA ${TAG} to GitHub Pages."
+          fi
+
+      - name: Push Web, Windows & Android builds to itch.io (when BUTLER_API_KEY secret is set)
+        if: steps.pub.outputs.published_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.pub.outputs.published_tag }}
+          VER: ${{ steps.pub.outputs.published_ver }}
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          if [ -z "$BUTLER_API_KEY" ]; then
+            echo "BUTLER_API_KEY secret not configured - skipping itch.io auto-push."
+            exit 0
+          fi
+          mkdir -p /tmp/itch_dl /tmp/butler
+          curl -fsSL -o /tmp/butler.zip "https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default"
+          unzip -q /tmp/butler.zip -d /tmp/butler
+          chmod +x /tmp/butler/butler
+          gh release download "$TAG" --repo "$REPO" -p "RathWars_Web.zip" -p "RathWars.exe" -p "RathWars.apk" -D /tmp/itch_dl
+          if [ -f /tmp/itch_dl/RathWars_Web.zip ]; then
+            /tmp/butler/butler push /tmp/itch_dl/RathWars_Web.zip shadowangelx2x/rath-wars:html5 --userversion "$VER"
+          fi
+          if [ -f /tmp/itch_dl/RathWars.exe ]; then
+            /tmp/butler/butler push /tmp/itch_dl/RathWars.exe shadowangelx2x/rath-wars:windows --userversion "$VER"
+          fi
+          if [ -f /tmp/itch_dl/RathWars.apk ]; then
+            /tmp/butler/butler push /tmp/itch_dl/RathWars.apk shadowangelx2x/rath-wars:android --userversion "$VER"
+          fi
+          echo "Pushed ${TAG} builds to itch.io."
