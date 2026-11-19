@@ -5,6 +5,12 @@ on:
     # Fridays at 03:30 UTC (09:00 AM IST)
     - cron: '30 3 * * 5'
   workflow_dispatch:
+    inputs:
+      redeploy_latest:
+        description: 'Re-deploy current Latest release to PWA & itch.io even if no draft exists'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -18,6 +24,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          REDEPLOY_LATEST: ${{ github.event.inputs.redeploy_latest }}
         run: |
           python3 - <<'PY'
           import json, os, re, subprocess, sys
@@ -27,13 +34,10 @@ jobs:
               return tuple(parts), r.get("created_at", "")
 
           repo = os.environ["REPO"]
+          redeploy = str(os.environ.get("REDEPLOY_LATEST", "")).lower() == "true"
           raw = subprocess.check_output(["gh", "api", f"repos/{repo}/releases?per_page=50"], text=True)
           releases = json.loads(raw)
           drafts = sorted([r for r in releases if r.get("draft")], key=ver_key, reverse=True)
-          if not drafts:
-              print("No staged draft release found - nothing to publish this Friday.")
-              sys.exit(0)
-
           published_existing = sorted(
               [r for r in releases if not r.get("draft")],
               key=ver_key,
@@ -57,6 +61,13 @@ jobs:
               )
               print(f"Published {tag} as Latest.")
               ver = tag.lstrip("v")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+                  out.write(f"published_tag={tag}\n")
+                  out.write(f"published_ver={ver}\n")
+          elif redeploy and published_existing:
+              tag = published_existing[0]["tag_name"]
+              ver = tag.lstrip("v")
+              print(f"Re-deploying existing Latest release {tag}.")
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
                   out.write(f"published_tag={tag}\n")
                   out.write(f"published_ver={ver}\n")
@@ -123,6 +134,7 @@ jobs:
           VER: ${{ steps.pub.outputs.published_ver }}
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
         run: |
+          export BUTLER_API_KEY="$(printf '%s' "$BUTLER_API_KEY" | tr -d '\r\n ')"
           if [ -z "$BUTLER_API_KEY" ]; then
             echo "BUTLER_API_KEY secret not configured - skipping itch.io auto-push."
             exit 0
