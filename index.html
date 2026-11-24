@@ -61,9 +61,82 @@ body { color: #e8d6a8; background-color: #0d0608; overflow: hidden; touch-action
 		</div>
 		<div id="rw-fs-tip" role="status"></div>
 
+		<script>
+// Detect CPU software WebGL (WARP / SwiftShader / llvmpipe), cap backing resolution, and pace rAF
+// without Godot's Engine.max_fps busy-wait loop (OS_Web::delay_usec spins 100% CPU in WASM).
+(function () {
+	let isSwGL = false;
+	try {
+		const tc = document.createElement('canvas');
+		const gl = tc.getContext('webgl2') || tc.getContext('webgl');
+		if (gl) {
+			const ext = gl.getExtension('WEBGL_debug_renderer_info');
+			const ren = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '') : String(gl.getParameter(gl.RENDERER) || '');
+			if (/Basic Render|WARP|SwiftShader|llvmpipe|Software|Mesa OffScreen/i.test(ren)) {
+				isSwGL = true;
+			}
+			const lc = gl.getExtension('WEBGL_lose_context');
+			if (lc) { lc.loseContext(); }
+		}
+	} catch (_e) {}
+	window.rwSoftwareGL = isSwGL;
+
+	// Only cap WebGL backing resolution on CPU software WebGL (WARP/SwiftShader) to crisp 1:1 1280x720.
+	// On real hardware GPUs, keep native window.devicePixelRatio untouched for razor-sharp text/UI.
+	if (isSwGL) {
+		try {
+			const dprDesc = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio')
+				|| Object.getOwnPropertyDescriptor(Window.prototype, 'devicePixelRatio');
+			const rawDpr = (dprDesc && typeof dprDesc.get === 'function')
+				? function () { return dprDesc.get.call(window) || 1; }
+				: (function (v) { return function () { return v; }; }(window.devicePixelRatio || 1));
+			Object.defineProperty(window, 'devicePixelRatio', {
+				configurable: true,
+				get: function () {
+					const dpr = rawDpr();
+					const iw = Math.max(1, window.innerWidth || 1280);
+					const ih = Math.max(1, window.innerHeight || 720);
+					const cap = Math.min(1280 / iw, 720 / ih);
+					return Math.max(0.5, Math.min(dpr, cap));
+				},
+			});
+		} catch (_e) {}
+	}
+
+	if (!window.requestAnimationFrame || !window.cancelAnimationFrame) { return; }
+	const origRAF = window.requestAnimationFrame.bind(window);
+	const origCAF = window.cancelAnimationFrame.bind(window);
+	const minFrameMs = isSwGL ? 22.0 : 12.8;   // ~40-45 FPS crisp 720p on software WebGL, ~60-75 FPS on GPU
+	const active = new Map();
+	let nextHandle = 1;
+	let lastRunTs = -1e9;
+	window.requestAnimationFrame = function (cb) {
+		const handle = nextHandle++;
+		function gate(ts) {
+			if (!active.has(handle)) { return; }
+			if (ts !== lastRunTs && (ts - lastRunTs) < minFrameMs) {
+				active.set(handle, origRAF(gate));
+				return;
+			}
+			active.delete(handle);
+			lastRunTs = ts;
+			cb(ts);
+		}
+		active.set(handle, origRAF(gate));
+		return handle;
+	};
+	window.cancelAnimationFrame = function (handle) {
+		const realId = active.get(handle);
+		if (realId !== undefined) {
+			active.delete(handle);
+			origCAF(realId);
+		}
+	};
+}());
+		</script>
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":39436336,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":39443152,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
@@ -192,6 +265,8 @@ const engine = new Engine(GODOT_CONFIG);
 			setBanner('↻ Rotate sideways for full-screen battle   ✕');
 		} else if (ios && !standalone) {
 			setBanner('iPhone full-screen: tap Share ↑ → Add to Home Screen   ✕');
+		} else if (window.rwSoftwareGL) {
+			setBanner('⚠ Browser Hardware Acceleration is OFF — turn it ON in browser settings for full 60 FPS & lowest CPU   ✕');
 		} else {
 			setBanner('');
 		}
