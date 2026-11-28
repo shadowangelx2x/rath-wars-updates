@@ -136,7 +136,7 @@ body { color: #e8d6a8; background-color: #0d0608; overflow: hidden; touch-action
 		</script>
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":39443152,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":true,"fileSizes":{"index.pck":40848500,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
@@ -207,7 +207,7 @@ const engine = new Engine(GODOT_CONFIG);
 	};
 
 	window.rwCanFullscreen = function () {
-		return true;
+		return !window.rwPortal;   // portals (CrazyGames build) own full screen
 	};
 	window.rwIsFullscreen = function () {
 		return !!(document.fullscreenElement || document.webkitFullscreenElement);
@@ -261,7 +261,9 @@ const engine = new Engine(GODOT_CONFIG);
 		const touch = (navigator.maxTouchPoints || 0) > 0;
 		const portrait = window.innerHeight > window.innerWidth;
 		const standalone = !!(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
-		if (touch && portrait) {
+		if (window.rwPortal) {
+			setBanner(window.rwSoftwareGL ? '⚠ Browser Hardware Acceleration is OFF — turn it ON in browser settings for full 60 FPS & lowest CPU   ✕' : '');
+		} else if (touch && portrait) {
 			setBanner('↻ Rotate sideways for full-screen battle   ✕');
 		} else if (ios && !standalone) {
 			setBanner('iPhone full-screen: tap Share ↑ → Add to Home Screen   ✕');
